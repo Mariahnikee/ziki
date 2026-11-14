@@ -405,6 +405,32 @@ describe("reading a public repo through Ziki's GitHub client (13 Nov)", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://api.github.test/repos/settle/app/contents", expect.not.objectContaining({ headers: expect.objectContaining({ Authorization: expect.anything() }) }));
   });
 
+  it("tries Ziki's own token when the GitHub App is refused a public repo (like EDGE-NG's 403)", async () => {
+    const client = await import("@/lib/github/client");
+    const app = { auth: "app", getOrNull: vi.fn(async () => { throw new GitHubError(403, "Resource not accessible by integration"); }) };
+    const token = { auth: "token", getOrNull: vi.fn(async (path: string) => (path.endsWith("/contents") ? [{ name: "README.md" }] : { private: false })) };
+    vi.mocked(client.installationIdForRepo).mockResolvedValueOnce("install-1");
+    vi.mocked(client.githubClientFor).mockImplementation((async (project: { githubInstallationId: string | null }) => (project.githubInstallationId ? app : token)) as never);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await realPreviewNetwork.repo("edge-ng", "edge-ng")).toEqual({ status: "ok", root: ["README.md"], github: [], docs: [] });
+    expect(token.getOrNull).toHaveBeenCalledWith("/repos/edge-ng/edge-ng");
+    // The token could read it, so no request without a login was needed.
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.mocked(client.githubClientFor).mockImplementation((async () => github) as never);
+  });
+
+  it("says why the last try failed when the App, the token and no login all fail", async () => {
+    const client = await import("@/lib/github/client");
+    const refused = (status: number) => ({ getOrNull: vi.fn(async () => { throw new GitHubError(status, "no"); }) });
+    vi.mocked(client.installationIdForRepo).mockResolvedValueOnce("install-1");
+    vi.mocked(client.githubClientFor).mockImplementation((async (project: { githubInstallationId: string | null }) =>
+      project.githubInstallationId ? { auth: "app", ...refused(403) } : { auth: "token", ...refused(429) }) as never);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    expect(await realPreviewNetwork.repo("edge-ng", "edge-ng")).toEqual({ status: "unavailable", detail: "GitHub answered 503" });
+    vi.mocked(client.githubClientFor).mockImplementation((async () => github) as never);
+  });
+
   it("doesn't ask again without a token when Ziki had none to begin with", async () => {
     github.auth = "none";
     github.getOrNull.mockImplementation(async () => {

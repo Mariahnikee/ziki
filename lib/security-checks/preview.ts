@@ -576,13 +576,17 @@ export const realPreviewNetwork: PreviewNetwork = {
     const github = await githubClientFor({ githubInstallationId: installationId });
     const base = `/repos/${owner}/${name}`;
     let detail = "";
-    const viaClient = async (suffix: string): Promise<unknown | "not_found" | "unavailable"> => {
+    // When the App is used, Ziki's own token is the next try: the App can be refused a repo
+    // (no "Contents: read", or the install doesn't cover it) that the token can read.
+    const tokenClient = github.auth === "app" ? githubClientFor({ githubInstallationId: null }).catch(() => null) : null;
+    const viaClient = async (client: typeof github, suffix: string): Promise<unknown | "not_found" | "unavailable"> => {
       try {
-        const body = await github.getOrNull<unknown>(`${base}${suffix}`);
+        const body = await client.getOrNull<unknown>(`${base}${suffix}`);
         return body === null ? "not_found" : body;
       } catch (error) {
+        // The latest attempt's reason, so the message says why the last try failed.
         detail = error instanceof GitHubError && error.status ? `GitHub answered ${error.status}` : "Ziki couldn't reach GitHub";
-        logger.warn(`[security-preview] couldn't read ${owner}/${name}${suffix} from GitHub (${github.auth}): ${detail}`, error instanceof Error ? error.message : error);
+        logger.warn(`[security-preview] couldn't read ${owner}/${name}${suffix} from GitHub (${client.auth}): ${detail}`, error instanceof Error ? error.message : error);
         return "unavailable";
       }
     };
@@ -596,18 +600,27 @@ export const realPreviewNetwork: PreviewNetwork = {
         });
         if (response.status === 404) return "not_found";
         if (!response.ok) {
-          detail ||= `GitHub answered ${response.status}`;
+          detail = `GitHub answered ${response.status}`;
+          logger.warn(`[security-preview] couldn't read ${owner}/${name}${suffix} from GitHub (none): ${detail}`);
           return "unavailable";
         }
         return await response.json();
       } catch {
+        // A network failure here says less than an answer GitHub already gave, so keep that one.
         detail ||= "Ziki couldn't reach GitHub";
         return "unavailable";
       }
     };
+    // App (or token), then Ziki's own token if the App was refused, then no login at all.
     const read = async (suffix: string): Promise<unknown | "not_found" | "unavailable"> => {
-      const first = await viaClient(suffix);
-      return first === "unavailable" && github.auth !== "none" ? anonymously(suffix) : first;
+      const first = await viaClient(github, suffix);
+      if (first !== "unavailable" || github.auth === "none") return first;
+      const token = tokenClient ? await tokenClient : null;
+      if (token && token.auth === "token") {
+        const second = await viaClient(token, suffix);
+        if (second !== "unavailable") return second;
+      }
+      return anonymously(suffix);
     };
     const namesIn = (body: unknown): string[] =>
       Array.isArray(body) ? body.flatMap((entry) => (typeof (entry as { name?: unknown })?.name === "string" ? [(entry as { name: string }).name] : [])) : [];
