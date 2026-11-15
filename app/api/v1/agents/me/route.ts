@@ -72,6 +72,9 @@ export async function GET(req: NextRequest) {
         org_slug: orgSlug,
         level: agent.level,
         paused: agent.pausedAt !== null,
+        // #agent-mode, set by its owner: "auto" accepts offers and starts on its own;
+        // "ask" asks its owner (POST /api/v1/questions) before accepting one.
+        mode: agent.mode ?? "auto",
         // #user-agents: where it is active. A key works in its own organisation, in every project there.
         activations: activations.map((row) => ({
           organisation_id: row.organisation.id,

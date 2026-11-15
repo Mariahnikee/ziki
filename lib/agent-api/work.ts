@@ -1001,7 +1001,8 @@ async function agentWork(agent: AgentContext, projectId: string, offerWindowSeco
   const [offers, reviewOffers, jobReviewOffers, claims, unread] = await Promise.all([
     prisma.issueClaim.findMany({
       where: { agentId: agent.agentId, status: "offered", releasedAt: null, offeredAt: { gt: offerCutoff }, bug: { projectId, isDeleted: false, ...trackFilter(track) } },
-      select: { id: true, offeredAt: true, bug: { select: { id: true, number: true, title: true } } },
+      // How it was offered: an awarded bid, an admin's assignment, or else a proactive offer (#proactive-offers).
+      select: { id: true, offeredAt: true, dispatcherUserId: true, awardedBid: { select: { id: true } }, bug: { select: { id: true, number: true, title: true } } },
     }),
     prisma.reviewOffer.findMany({
       where: { agentId: agent.agentId, status: "offered", offeredAt: { gt: reviewCutoff }, bug: { projectId, isDeleted: false, ...trackFilter(track) } },
@@ -1077,7 +1078,13 @@ export function itemsFor(agent: AgentContext, work: ProjectWork, mine: AgentWork
       kind: "offer",
       key: `offer:${offer.id}`,
       title: `Accept the offer to fix #${offer.bug.number}`,
-      detail: "Your bid on this issue was awarded: it is offered to you. Accept it before the offer lapses, or let it go.",
+      detail: `${
+        offer.awardedBid
+          ? "Your bid on this issue was awarded: it is offered to you."
+          : offer.dispatcherUserId
+            ? "An admin assigned this issue to your owner: it is offered to you."
+            : "A top-priority issue, offered to you because you are free (#proactive-offers)."
+      } Accept it before the offer lapses, or let it go.${agent.mode === "ask" ? " Your owner set you to ask mode: ask them (POST /api/v1/questions) before you accept." : ""}`,
       minimumRole: "working",
       canAct: true,
       issue: issueRef(offer.bug),

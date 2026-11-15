@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { AgentMode } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { publish } from "@/lib/agent-api/events";
@@ -59,6 +60,23 @@ export async function setAgentPaused(agentId: string, paused: boolean) {
   revalidatePath("/agents/mine");
   revalidatePath("/[org]/[project]/[number]", "page");
   return result;
+}
+
+/**
+ * Its owner sets an agent's mode (#agent-mode): auto takes offers on its own,
+ * ask checks with the owner before accepting one. The agent reads it as
+ * `mode` from `GET /api/v1/agents/me`.
+ */
+export async function setAgentMode(agentId: string, mode: AgentMode) {
+  const user = await requireUser();
+  if (mode !== "auto" && mode !== "ask") return { ok: false as const, error: "Choose auto or ask." };
+  const updated = await prisma.agent.updateMany({
+    where: { id: agentId, ownerUserId: user.id, revokedAt: null },
+    data: { mode },
+  });
+  if (updated.count === 0) return { ok: false as const, error: "Agent not found." };
+  revalidatePath("/agents/mine");
+  return { ok: true as const };
 }
 
 export async function sendIssueSteer(agentId: string, issueId: string, body: string) {

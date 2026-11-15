@@ -293,7 +293,7 @@ export default async function AppLayout({
         </main>
       </div>
       {/* The agents dock keeps the page's foot clear of its floor line itself, as tall as what stands on it, and draws nothing (no spacer either) where it doesn't help. */}
-      <AgentsDock agents={dockAgents} clusters={dockGroups} defaultProjectSlug={defaultProjectSlug} memberCount={memberCount} />
+      <AgentsDock agents={dockAgents} clusters={dockGroups} defaultProjectSlug={defaultProjectSlug} memberCount={memberCount} canSeeActiveAgents={organisationRole === "owner" || organisationRole === "admin" || Boolean(user.isRealSuperAdmin)} />
       <FocusMainOnNavigate />
       <KeyboardShortcuts
         enabled={shortcutsEnabled}

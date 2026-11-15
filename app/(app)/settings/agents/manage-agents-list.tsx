@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useTransition } from "react";
-import { setAgentPaused } from "@/app/actions/agent-steering";
+import { setAgentMode, setAgentPaused } from "@/app/actions/agent-steering";
 import Link from "next/link";
-import type { AgentLevel } from "@prisma/client";
+import type { AgentLevel, AgentMode } from "@prisma/client";
 import { AGENT_LEVEL_LABELS } from "@/lib/agents/levels";
 import { agentCapSummary } from "@/lib/agents/registry-limits";
 import { agentPageHref } from "@/lib/header-nav";
@@ -33,6 +33,8 @@ export type ManageAgentItem = {
   createdAt: string;
   revokedAt: string | null;
   pausedAt: string | null;
+  /** Auto takes offers on its own; ask checks with you first (#agent-mode). */
+  mode: AgentMode;
   /** The owner's avatar pick; null wears the automatic robot. */
   avatar: string | null;
   recent: boolean;
@@ -174,6 +176,22 @@ export function ManageAgentsList({
                           className="rounded-full border border-zk-border px-3 py-1 text-xs font-semibold text-zk-text hover:bg-zk-chip disabled:opacity-50"
                         >
                           {agent.pausedAt ? "Resume agent" : "Pause agent"}
+                        </button>
+                      ) : null}
+                      {!agent.revokedAt ? (
+                        // #agent-mode: auto takes offers on its own; ask checks with you before accepting one.
+                        <button
+                          type="button"
+                          disabled={pausePending}
+                          aria-label={`Mode: ${agent.mode === "auto" ? "Auto" : "Ask"}. Switch to ${agent.mode === "auto" ? "Ask" : "Auto"}`}
+                          title={agent.mode === "auto" ? "Takes offers on its own. Click to have it ask you first." : "Asks you before taking an offer. Click to let it take offers on its own."}
+                          onClick={() => startPauseTransition(async () => {
+                            const result = await setAgentMode(agent.id, agent.mode === "auto" ? "ask" : "auto");
+                            if (result.ok) window.location.reload();
+                          })}
+                          className="relative z-10 rounded-full border border-zk-border px-3 py-1 text-xs font-semibold text-zk-text hover:bg-zk-chip disabled:opacity-50"
+                        >
+                          Mode: {agent.mode === "auto" ? "Auto" : "Ask"}
                         </button>
                       ) : null}
                     </div>

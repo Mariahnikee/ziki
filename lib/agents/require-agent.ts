@@ -1,4 +1,4 @@
-import type { AgentLevel } from "@prisma/client";
+import type { AgentLevel, AgentMode } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authorizationToken, hashSecret } from "@/lib/agents/keys";
@@ -43,6 +43,8 @@ export type AgentContext = {
   /** When the higher budget lapses; null means no expiry (#596). */
   burstUntil?: Date | null;
   pausedAt?: Date | null;
+  /** Auto takes offers on its own; ask checks with its owner first (#agent-mode). */
+  mode?: AgentMode;
   /** The key used for this call, so rotation can revoke exactly it. */
   keyId: string;
   /** This call runs in a workspace where the agent is an on-call guest (D2). */
@@ -99,6 +101,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
           about: true,
           _count: { select: { skills: true } },
           pausedAt: true,
+          mode: true,
           owner: { select: { role: true, memberships: { select: { organisationId: true } } } },
           // Its live on-call guest stays, read with the key so other agents pay nothing extra.
           activations: { where: LIVE_GUEST, select: { organisationId: true, burst: true, burstUntil: true } },
@@ -163,6 +166,7 @@ export async function requireAgent(request: HeaderSource): Promise<AgentContext>
     burst: guestStay ? guestStay.burst : activation.burst,
     burstUntil: (guestStay ? guestStay.burstUntil : activation.burstUntil) ?? null,
     pausedAt: agent.pausedAt ?? null,
+    mode: agent.mode ?? "auto",
     keyId: key.id,
     ...(guestStay ? { guest: true } : {}),
   };

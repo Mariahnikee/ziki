@@ -67,13 +67,16 @@ vi.mock("next/cache", () => ({
 
 const section = vi.hoisted(() => ({
   notFound: vi.fn(() => { throw new Error("NOT_FOUND"); }),
+  forbidden: vi.fn(() => { throw new Error("FORBIDDEN"); }),
+  loadProjectAgents: vi.fn(async () => ({ agents: [], hidden: 0, offerWindowSeconds: 1800 })),
   redirect: vi.fn((to: string) => { throw new Error(`REDIRECT ${to}`); }),
   requireProject: vi.fn(),
   firstProjectRefFor: vi.fn(),
   requireUser: vi.fn(async () => ({ id: "ada" })),
   requireSuperAdmin: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ notFound: section.notFound, redirect: section.redirect, permanentRedirect: section.redirect }));
+vi.mock("next/navigation", () => ({ notFound: section.notFound, forbidden: section.forbidden, redirect: section.redirect, permanentRedirect: section.redirect }));
+vi.mock("@/lib/agents/project-agents", () => ({ loadProjectAgents: section.loadProjectAgents }));
 vi.mock("@/lib/project-route", () => ({ requireProject: section.requireProject, firstProjectRefFor: section.firstProjectRefFor }));
 vi.mock("@/lib/auth-helpers", () => ({ requireUser: section.requireUser, requireSuperAdmin: section.requireSuperAdmin }));
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => ({ user: { id: "viewer" } })) }));
@@ -110,6 +113,7 @@ import { generateMetadata as projectOverviewMetadata } from "@/app/(app)/[org]/[
 import { sitemapSectionXml } from "@/lib/seo/sitemap";
 import IssueHistoryPage from "@/app/(app)/[org]/[project]/[number]/history/page";
 import ProjectIssueLayout from "@/app/(app)/[org]/[project]/[number]/layout";
+import ActiveAgentsPage from "@/app/(app)/[org]/[project]/agents/page";
 
 const agent = {
   agentId: "agent1",
@@ -590,5 +594,26 @@ describe("search engines see only public projects (#seo-pages)", () => {
     const xml = await sitemapSectionXml("projects.xml");
     expect(projectFindMany.mock.calls[0][0].where).toMatchObject({ visibility: "public", archivedAt: null });
     expect(xml).toContain("/acme/web</loc>");
+  });
+});
+
+describe("the Active agents page (#active-agents)", () => {
+  const open = () => ActiveAgentsPage({ params: Promise.resolve({ org: "acme", project: "web" }), searchParams: Promise.resolve({}) });
+  const context = (isOrgAdmin: boolean) => ({
+    user: { id: "ada" }, organisationId: "org-1", isOrgAdmin, isOrgMember: true, isProjectMember: false, canContribute: true,
+    project: { id: "p-1", slug: "web", name: "Web", orgSlug: "acme", ref: projectRef("acme", "web") },
+  });
+  beforeEach(() => vi.clearAllMocks());
+
+  it("is refused to a member who isn't the organisation's owner or admin, before any agent is read", async () => {
+    section.requireProject.mockResolvedValue(context(false));
+    await expect(open()).rejects.toThrow("FORBIDDEN");
+    expect(section.loadProjectAgents).not.toHaveBeenCalled();
+  });
+
+  it("opens for an owner or admin", async () => {
+    section.requireProject.mockResolvedValue(context(true));
+    await expect(open()).resolves.toBeTruthy();
+    expect(section.loadProjectAgents).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p-1", organisationId: "org-1" }));
   });
 });

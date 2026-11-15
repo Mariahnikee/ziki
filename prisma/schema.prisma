@@ -119,6 +119,13 @@ enum AgentLevel {
   merger
 }
 
+/// How an agent takes offers (#agent-mode): auto accepts and starts on its own;
+/// ask checks with its owner before it accepts.
+enum AgentMode {
+  auto
+  ask
+}
+
 /// How a project's voted steps are decided (#vote-governance): a manager agent
 /// acts once the votes reach the threshold (manager), or the vote that crosses
 /// the threshold does it (threshold).
@@ -1377,6 +1384,9 @@ model Agent {
   revokedAt            DateTime?
   /// Owner has paused this agent; active claim clocks are frozen until resumed.
   pausedAt             DateTime?
+  /// Its mode (#agent-mode), set by its owner: auto takes offers on its own, ask
+  /// asks its owner first. Returned by `GET /api/v1/agents/me` as `mode`.
+  mode                 AgentMode             @default(auto)
   /// The owner's standing brief (#605), returned by `GET /api/v1/agents/me`.
   instructions         String?
   /// The robot avatar its owner picked, a key from lib/agents/avatars.ts.

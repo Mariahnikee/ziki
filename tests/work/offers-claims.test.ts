@@ -31,6 +31,8 @@ import { DEFAULT_PROJECT_WORKFLOW } from "@/lib/workflow-config";
 import type { AgentContext } from "@/lib/agents/require-agent";
 import { yourOpenBidsWhere, yourWorkWhere } from "@/lib/my-work-filter";
 import { whatsNext } from "@/lib/whats-next";
+import { offerable, pickAgent } from "@/lib/agents/proactive-offers";
+import { priorityNow, type PriorityNowIssue } from "@/lib/priority-now";
 
 const agent = { agentId: "agent-1", name: "Ada's Claude", ownerId: "ada", organisationId: "t1", level: "working", burst: false, keyId: "k1" } as AgentContext;
 const offered = (overrides: Record<string, unknown> = {}) => ({
@@ -161,5 +163,54 @@ describe("releasing a claim", () => {
     await expect(release("offered")).resolves.toMatchObject({ reopened: false });
     await expect(release("active", "https://github.com/emerjent/ziki/pull/1")).resolves.toMatchObject({ reopened: false });
     expect(notifyLater).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Priority now and proactive offers (#priority-now, #proactive-offers): the
+ * site offers a project's top-priority unheld issues to idle agents. The
+ * order decides what is offered first; the gates keep it from taking work
+ * someone asked for or holds.
+ */
+
+describe("priority now and proactive offers (#proactive-offers)", () => {
+  const row = (number: number, priority: string) => ({ id: `b${number}`, number, title: `#${number}`, priority, areaId: null, difficulty: "medium", _count: { bids: 0 }, claims: [] });
+
+  it("ranks urgent, then high, then medium, then low, and stops at the limit", async () => {
+    const byPriority: Record<string, ReturnType<typeof row>[]> = {
+      urgent: [row(7, "urgent")],
+      high: [row(3, "high"), row(4, "high")],
+      medium: [row(1, "medium"), row(2, "medium")],
+      low: [row(9, "low")],
+    };
+    const findMany = vi.fn(async ({ where, take }: { where: { priority: string | { notIn: string[] } }; take: number }) =>
+      (typeof where.priority === "string" ? byPriority[where.priority]! : byPriority.medium!).slice(0, take));
+    const top = await priorityNow({ organisationId: "t1", projectId: "p1", offerWindowSeconds: 1800 }, 4, { bug: { findMany } } as never);
+    expect(top.map((issue) => issue.number)).toEqual([7, 3, 4, 1]);
+    // Low was never read: the limit was reached first.
+    expect(findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it("offers only an issue nobody holds, with no open bids, that isn't complex", () => {
+    const issue = (overrides: Partial<PriorityNowIssue> = {}): PriorityNowIssue => ({
+      id: "b1", number: 1, title: "x", priority: "urgent", areaId: null, difficulty: "medium", openBids: 0, offer: null, ...overrides,
+    });
+    expect(offerable(issue())).toBe(true);
+    expect(offerable(issue({ openBids: 1 }))).toBe(false);
+    expect(offerable(issue({ difficulty: "complex" }))).toBe(false);
+    expect(offerable(issue({ offer: { claimId: "c1", agentId: "a1", agentName: "Pixel", ownerName: "Ada", offeredAt: new Date(), planning: false } }))).toBe(false);
+  });
+
+  it("picks an area match first, then the agent seen most recently, never one offered the issue before", () => {
+    const now = Date.now();
+    const idle = [
+      { id: "recent", ownerUserId: "u1", areaIds: new Set<string>(), lastSeenAt: new Date(now - 1_000) },
+      { id: "area", ownerUserId: "u2", areaIds: new Set(["checkout"]), lastSeenAt: new Date(now - 600_000) },
+      { id: "older", ownerUserId: "u3", areaIds: new Set<string>(), lastSeenAt: new Date(now - 300_000) },
+    ];
+    expect(pickAgent({ areaId: "checkout" }, idle, new Set())?.id).toBe("area");
+    expect(pickAgent({ areaId: null }, idle, new Set())?.id).toBe("recent");
+    expect(pickAgent({ areaId: "checkout" }, idle, new Set(["area"]))?.id).toBe("recent");
+    expect(pickAgent({ areaId: null }, idle, new Set(["recent", "area", "older"]))).toBeNull();
   });
 });

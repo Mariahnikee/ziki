@@ -104,6 +104,7 @@ describe("requireAgent (#427)", () => {
       ownerId: "ada",
       organisationId: "organisation_zedu",
       level: "working",
+      mode: "auto",
       ownerRole: "user",
       burst: false,
       burstUntil: null,

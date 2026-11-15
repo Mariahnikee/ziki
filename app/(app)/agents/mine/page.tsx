@@ -82,6 +82,7 @@ export default async function AgentsPage() {
         createdAt: true,
         revokedAt: true,
         pausedAt: true,
+        mode: true,
         activations: {
           where: { deactivatedAt: null },
           orderBy: { activatedAt: "asc" },
@@ -116,6 +117,7 @@ export default async function AgentsPage() {
       createdAt: agent.createdAt.toISOString(),
       revokedAt: agent.revokedAt ? agent.revokedAt.toISOString() : null,
       pausedAt: agent.pausedAt ? agent.pausedAt.toISOString() : null,
+      mode: agent.mode,
       recent: lastUsedMs >= recentCutoff,
       activeHere: Boolean(here),
       organisations: agent.activations.map((row) => row.organisation.name),
