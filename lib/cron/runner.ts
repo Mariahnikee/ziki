@@ -17,8 +17,12 @@ import { refreshMergeQueue } from "@/lib/github/sync";
 import { followPreviewBuilds } from "@/lib/previews/builds";
 import { sweepSecurityChecks } from "@/lib/security-checks/engine";
 import { retryPendingWithdrawals } from "@/lib/coins/withdraw";
+import { sweepProjectBudgets } from "@/lib/coins/budget-sweeps";
+import { sweepEarnedZiks } from "@/lib/coins/earnings-sync";
 import { sweepFallback } from "@/lib/security-checks/fallback";
 import { sweepTesting } from "@/lib/agent-api/testing-sweep";
+import { sweepProactiveOffers } from "@/lib/agents/proactive-offers";
+import { sweepWorkAlerts, type WorkAlertSweepResult } from "@/lib/agents/work-alerts-sweep";
 
 export const FAILURE_ALERT_THRESHOLD = 3;
 const consecutiveFailures = new Map<string, number>();
@@ -54,6 +58,8 @@ export type PlatformSweepsResult = {
   timestamp: string;
   sweeps: {
     offers: { status: "ok" | "error"; expired?: number; error?: string };
+    proactiveOffers: { status: "ok" | "error"; offered?: number; error?: string };
+    workAlerts: { status: "ok" | "error"; error?: string } & Partial<WorkAlertSweepResult>;
     plans: { status: "ok" | "error"; expired?: number; error?: string };
     stakes: { status: "ok" | "error"; settled?: number; error?: string };
     jobReviewOffers: { status: "ok" | "error"; expired?: number; offered?: number; error?: string };
@@ -84,6 +90,8 @@ export type PlatformSweepsResult = {
     githubStatus: { status: "ok" | "error"; checked?: number; moved?: number; failed?: number; error?: string };
     previews: { status: "ok" | "error"; checked?: number; failed?: number; error?: string };
     withdrawals: { status: "ok" | "error"; checked?: number; sent?: number; waiting?: number; returned?: number; error?: string };
+    projectBudgets: { status: "ok" | "error"; checked?: number; returned?: number; error?: string };
+    earnedZiks: { status: "ok" | "error"; checked?: number; moved?: number; error?: string };
     deliveries: { status: "ok" | "error"; processed?: number; error?: string };
     retention: {
       status: "ok" | "error";
@@ -99,6 +107,7 @@ let sweepInProgress = false;
 /**
  * Runs the due sweeps on schedule (#647):
  * - Offer expiry (due-date sweep)
+ * - Proactive offers of top-priority issues to idle agents (#proactive-offers)
  * - Job-review offer expiry and recovery
  * - Stale claim release (inactivity & deadline)
  * - Reopen unassigned in-progress issues without live claims or linked fixes
@@ -120,6 +129,8 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
       timestamp,
       sweeps: {
         offers: { status: "ok" },
+        proactiveOffers: { status: "ok" },
+        workAlerts: { status: "ok" },
         plans: { status: "ok" },
         stakes: { status: "ok" },
         jobReviewOffers: { status: "ok" },
@@ -133,6 +144,8 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
         githubStatus: { status: "ok" },
         previews: { status: "ok" },
         withdrawals: { status: "ok" },
+        projectBudgets: { status: "ok" },
+        earnedZiks: { status: "ok" },
         deliveries: { status: "ok" },
         retention: { status: "ok" },
         searchIndex: { status: "ok" },
@@ -147,6 +160,27 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
     } catch (err) {
       recordSweepFailure("offers", err);
       result.sweeps.offers = { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+
+    // 1o. Proactive offers (#proactive-offers): after lapsed offers are released, the highest-ranked
+    // offerable issues go to idle active agents.
+    try {
+      const res = await sweepProactiveOffers();
+      recordSweepSuccess("proactiveOffers");
+      result.sweeps.proactiveOffers = { status: "ok", offered: res.offered };
+    } catch (err) {
+      recordSweepFailure("proactiveOffers", err);
+      result.sweeps.proactiveOffers = { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+
+    // 1o. Work alerts (#work-alerts): tell free agents, by role, what has stopped moving or is piling up.
+    try {
+      const res = await sweepWorkAlerts();
+      recordSweepSuccess("workAlerts");
+      result.sweeps.workAlerts = { status: "ok", ...res };
+    } catch (err) {
+      recordSweepFailure("workAlerts", err);
+      result.sweeps.workAlerts = { status: "error", error: err instanceof Error ? err.message : String(err) };
     }
 
     // 1p. Plan review windows (#plan-review): awards whose plan was never submitted or never decided in time.
@@ -206,7 +240,7 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
     }
 
     // 2a. Security checks (#security-checks): start proven checks (Ziki AI splits them),
-    // take back stale parts, give waiting parts to cleared agents, post finished
+    // take back stale parts (agents get parts by asking for them), post finished
     // reports (Ziki AI summary) and pay the finders of unlocked findings.
     try {
       const res = await sweepSecurityChecks(prisma);
@@ -299,6 +333,26 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
       result.sweeps.withdrawals = { status: "error", error: err instanceof Error ? err.message : String(err) };
     }
 
+    // 3c. Project budgets (#project-budget): warn owners whose budget is low or out, and give an idle or archived project's budget back.
+    try {
+      const res = await sweepProjectBudgets();
+      recordSweepSuccess("projectBudgets");
+      result.sweeps.projectBudgets = { status: "ok", ...res };
+    } catch (err) {
+      recordSweepFailure("projectBudgets", err);
+      result.sweeps.projectBudgets = { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+
+    // 3d. Earnings in Ziks (#earnings-in-ziks): move what people earned on the points ledger into their Ziks wallets.
+    try {
+      const res = await sweepEarnedZiks();
+      recordSweepSuccess("earnedZiks");
+      result.sweeps.earnedZiks = { status: "ok", ...res };
+    } catch (err) {
+      recordSweepFailure("earnedZiks", err);
+      result.sweeps.earnedZiks = { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+
     // 4. Webhook Deliveries
     try {
       const processed = await dispatchDueDeliveries();
@@ -340,6 +394,8 @@ export async function runPlatformSweeps(): Promise<PlatformSweepsResult | { skip
 
     logger.info("[cron] Platform sweeps finished", {
       offers: result.sweeps.offers,
+      proactiveOffers: result.sweeps.proactiveOffers,
+      workAlerts: result.sweeps.workAlerts,
       jobReviewOffers: result.sweeps.jobReviewOffers,
       reviewOffers: result.sweeps.reviewOffers,
       claims: result.sweeps.claims,

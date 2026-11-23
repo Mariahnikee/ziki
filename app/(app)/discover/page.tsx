@@ -4,7 +4,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { optionalUser } from "@/lib/auth-helpers";
 import { pageMetadata } from "@/lib/seo/site";
-import { OPEN_ISSUES_WHERE } from "@/lib/project-overview";
 import { DiscoverProjectCard, type DiscoverableProject } from "@/components/discover-project-card";
 import { DiscoverFilters } from "@/components/discover-filters";
 import { parseProjectRewardConfig } from "@/lib/points/project-rewards";
@@ -13,6 +12,9 @@ import {
   filterDirectoryProjects,
   normalizeAreaSlug,
 } from "@/lib/public-directory";
+
+/** What counts as an open issue on a project card. */
+const OPEN_ISSUES_WHERE = { isDeleted: false, status: { in: ["open", "in_progress"] } } satisfies Prisma.BugWhereInput;
 
 /** The list itself is the page; a search or filter of it is kept out of search results (#seo-pages). */
 export async function generateMetadata(props: DiscoverPageProps): Promise<Metadata> {
@@ -87,7 +89,7 @@ export default async function DiscoverPage(props: DiscoverPageProps) {
 
   const projects = await prisma.project.findMany({
     where,
-    orderBy: [{ isOpenForContributors: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ acceptsGuestIdeas: "desc" }, { isOpenForContributors: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       slug: true,
@@ -232,7 +234,7 @@ export default async function DiscoverPage(props: DiscoverPageProps) {
 
       {/* Project Grid */}
       {cardsData.length === 0 ? (
-        <div className="rounded-[20px] border border-zk-border bg-zk-surface p-12 text-center">
+        <div className="rounded-panel border border-zk-border bg-zk-surface p-12 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zk-chip text-zk-muted">
             <svg
               width="24"

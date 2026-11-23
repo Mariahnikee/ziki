@@ -6,7 +6,7 @@ import { agentPageHref, agentsSkillHref, AGENTS_DIRECTORY_HREF } from "@/lib/hea
 import { agentPicturePath } from "@/lib/agents/profile";
 import { directoryTag, isListedAgent, listedAgentWhere } from "@/lib/agents/directory";
 import { SHARE_IMAGE } from "@/lib/share-image";
-import { clip, DEFAULT_OG_IMAGES, fullTitle, NOINDEX, SITE_OG } from "@/lib/seo/site";
+import { clip, DEFAULT_OG_IMAGES, fittedTitle, fullTitle, NOINDEX, SITE_OG } from "@/lib/seo/site";
 
 /**
  * Search and share metadata for the public agent pages (#seo-agents): titles,
@@ -27,7 +27,10 @@ const profileSelect = {
   createdAt: true,
   updatedAt: true,
   picture: { select: { updatedAt: true } },
-  skills: { orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { tag: { select: { name: true } } } },
+  skills: {
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    select: { summary: true, description: true, tag: { select: { name: true } } },
+  },
   id: true,
 } satisfies Prisma.AgentSelect;
 
@@ -57,7 +60,9 @@ function profileDescription(agent: PublicAgent): string {
 export async function agentProfileMetadata(rawUsername: string): Promise<Metadata> {
   const agent = await loadPublicAgent(rawUsername);
   if (!agent) return { title: "Agent not found", robots: NOINDEX };
-  const listed = isListedAgent({ ...agent, skillCount: agent.skills.length });
+  // The same rule as the sitemap and the directory: an empty or unclaimed
+  // profile stays out of search even though people may open it.
+  const listed = isListedAgent(agent);
   const title = `${agent.name} (@${agent.username})`;
   const description = profileDescription(agent);
   const url = agentPageHref(agent.username);
@@ -86,7 +91,7 @@ export async function agentProfileMetadata(rawUsername: string): Promise<Metadat
 /** The profile's structured data: a ProfilePage about the agent, and its breadcrumb. Null when it isn't public. */
 export async function agentProfileJsonLd(rawUsername: string): Promise<object[] | null> {
   const agent = await loadPublicAgent(rawUsername);
-  if (!agent || !isListedAgent({ ...agent, skillCount: agent.skills.length })) return null;
+  if (!agent || !isListedAgent(agent)) return null;
   const url = absoluteUrl(agentPageHref(agent.username));
   const image = pictureUrl(agent);
   return [
@@ -140,24 +145,38 @@ function directoryCanonical(path: string, params: DirectoryParams): string {
   return page > 1 ? `${path}?page=${page}` : path;
 }
 
-/** /agents and /agents/skill/{tag}. A search result page is noindex; the page itself is canonical without it. */
+/** Past the first page a directory is a continuation of the list, not a landing page. */
+function pastFirstPage(params: DirectoryParams): boolean {
+  return (Number.parseInt(first(params.page), 10) || 1) > 1;
+}
+
+/**
+ * /agents and /agents/skill/{tag}. A search result page is noindex; a paginated
+ * page is noindex too (only page 1 is the list's landing page), and both keep
+ * their links followable. The page itself is canonical without a search.
+ */
 export async function directoryMetadata(params: DirectoryParams, tagSlug?: string): Promise<Metadata> {
   const searching = Boolean(first(params.q));
+  const paginated = pastFirstPage(params);
   if (tagSlug) {
     const tag = await directoryTag(tagSlug);
     if (!tag) return { title: "No agents with that skill", robots: NOINDEX };
-    const title = `${tag.name} AI agents`;
+    const title = fittedTitle([
+      `Hire ${tag.name} AI agents on Ziki`,
+      `${tag.name} AI agents on Ziki`,
+      `${tag.name} AI agents | Ziki`,
+    ]);
     const description = clip(
-      `${tag.agents} AI ${tag.agents === 1 ? "agent" : "agents"} on Ziki with ${tag.name} skills. See their profiles, ratings and what they can do for you.`,
+      `${tag.agents} ${tag.name} AI ${tag.agents === 1 ? "agent" : "agents"} on Ziki. Compare ratings and verified work, then hire one for paid tasks a human checks before it ships.`,
     );
     const path = agentsSkillHref(tagSlug);
     return {
-      title,
+      title: { absolute: title },
       description,
       alternates: { canonical: directoryCanonical(path, params) },
-      robots: searching ? NOINDEX : { index: true, follow: true },
-      openGraph: { ...SITE_OG, type: "website", title: fullTitle(title), description, url: path, images: DEFAULT_IMAGES },
-      twitter: { card: "summary_large_image", title: fullTitle(title), description, images: [SHARE_IMAGE.url] },
+      robots: searching || paginated ? NOINDEX : { index: true, follow: true },
+      openGraph: { ...SITE_OG, type: "website", title, description, url: path, images: DEFAULT_IMAGES },
+      twitter: { card: "summary_large_image", title, description, images: [SHARE_IMAGE.url] },
     };
   }
   const count = await prisma.agent.count({ where: listedAgentWhere });
@@ -169,7 +188,7 @@ export async function directoryMetadata(params: DirectoryParams, tagSlug?: strin
     title,
     description,
     alternates: { canonical: directoryCanonical(AGENTS_DIRECTORY_HREF, params) },
-    robots: searching ? NOINDEX : { index: true, follow: true },
+    robots: searching || paginated ? NOINDEX : { index: true, follow: true },
     openGraph: { ...SITE_OG, type: "website", title: fullTitle(title), description, url: AGENTS_DIRECTORY_HREF, images: DEFAULT_IMAGES },
     twitter: { card: "summary_large_image", title: fullTitle(title), description, images: [SHARE_IMAGE.url] },
   };

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Avatar } from "@/components/avatar";
+import { FeedbackPortalPopover } from "@/components/feedback-portal-popover";
 import { RichText } from "@/components/rich-text";
 import { ProjectOverviewJoinButton } from "@/components/project-overview-join-button";
 import { ProjectJoinRequestButton } from "@/components/project-join-request-button";
 import { ProjectPendingJoinRequestsBanner } from "@/components/project-pending-join-requests";
 import { Badge } from "@/components/ui/badge";
 import { issuesPath, marketingPath, orgHomePath, projectRef } from "@/lib/project-paths";
-import { publicIssuesPath, publicReportPath } from "@/lib/public-project-paths";
+import { publicIssuesPath, publicContributePath } from "@/lib/public-project-paths";
 import { safeHref } from "@/lib/rich-text";
 import type { ProjectOverviewData } from "@/lib/project-overview";
 
@@ -72,14 +73,11 @@ export function ProjectOverviewView({
   data,
   currentUserId,
   workHref,
-  designHref = null,
 }: {
   data: ProjectOverviewData;
   currentUserId: string | null;
   /** Where a member starts work: the project's Marketing tab or its Ideas. */
   workHref: string | null;
-  /** The Design area (#9), for members of the project's organisation only. */
-  designHref?: string | null;
 }) {
   const { project } = data;
   const ref = projectRef(project.organisation.slug, project.slug);
@@ -124,16 +122,23 @@ export function ProjectOverviewView({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {data.isMember ? (
+              <FeedbackPortalPopover
+                orgSlug={project.organisation.slug}
+                projectSlug={project.slug}
+                projectName={project.name}
+              />
+            ) : null}
             {project.acceptsGuestIdeas ? (
               <>
                 <Link
-                  href={publicReportPath({ orgSlug: project.organisation.slug, projectSlug: project.slug }, "problem")}
+                  href={publicContributePath({ orgSlug: project.organisation.slug, projectSlug: project.slug }, "problem")}
                   className="inline-flex min-h-10 items-center justify-center rounded-xl border border-zk-border bg-zk-surface px-4 py-2 text-sm font-semibold text-zk-text hover:bg-zk-chip"
                 >
                   Report a problem
                 </Link>
                 <Link
-                  href={publicReportPath({ orgSlug: project.organisation.slug, projectSlug: project.slug }, "improvement")}
+                  href={publicContributePath({ orgSlug: project.organisation.slug, projectSlug: project.slug }, "improvement")}
                   className="inline-flex min-h-10 items-center justify-center rounded-xl border border-zk-border bg-zk-surface px-4 py-2 text-sm font-semibold text-zk-text hover:bg-zk-chip"
                 >
                   Suggest an improvement
@@ -258,14 +263,6 @@ export function ProjectOverviewView({
               >
                 View Issues →
               </Link>
-              {designHref ? (
-                <Link
-                  href={designHref}
-                  className="inline-flex min-h-10 items-center rounded-xl border border-zk-border bg-zk-surface px-4 py-2 text-sm font-semibold text-zk-text hover:bg-zk-chip"
-                >
-                  Design →
-                </Link>
-              ) : null}
             </section>
           ) : null}
         </div>

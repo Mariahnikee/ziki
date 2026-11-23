@@ -73,6 +73,18 @@ export function startNewChat() {
   kept.finished = false;
 }
 
+/**
+ * A scan was removed (18 Nov, Chloe): its result must not wait in the chat. The kept conversation is cleared and
+ * the box closed, so going back to Security shows a fresh, closed chat.
+ */
+export function forgetChatAfterRemove() {
+  startNewChat();
+  kept.started = undefined;
+  kept.open = false;
+  // A chat box already open on this page closes too (ScansArea listens).
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("zk:chat-forget"));
+}
+
 /** A message in the chat; a reply can carry a quick scan of the site. */
 type ChatItem = AssistantTurn & { scan?: { target: string; summary: PreviewSummary | null; note: string | null; checkId: string | null; already?: boolean } };
 
@@ -87,7 +99,6 @@ export function SecurityChat({
   id = "security-chat",
   focusOnOpen = false,
   startWith,
-  thenProgress = false,
   onSeeProgress,
   onScanned,
   onClose,
@@ -96,8 +107,6 @@ export function SecurityChat({
   focusOnOpen?: boolean;
   /** An address brought from the public page after sign-up: sent once, so its quick scan starts on arrival. */
   startWith?: string;
-  /** From Try now on the public page: once the brought site is in, open its page (the agents' progress) straight away. */
-  thenProgress?: boolean;
   /**
    * Once a scan is in, a blue button sits beside Send (it stays while typing), which opens the scan's page:
    * "See progress" while the agents are checking, "See results" once their report is posted.
@@ -238,12 +247,6 @@ export function SecurityChat({
           }
           // Added to the person's scans: the list below picks it up.
           if (answer.checkId) onScanned?.(answer.checkId);
-          // Try now from the public page: the person asked for the agents' check, so their page opens straight away.
-          if (instant && thenProgress && answer.checkId) {
-            if (onSeeProgress) onSeeProgress(answer.checkId);
-            else router.push(`/security/checks/${answer.checkId}`);
-            return;
-          }
           if (answer.checkId && !answer.already) router.refresh();
           return;
         }
@@ -303,14 +306,14 @@ export function SecurityChat({
           {turns.map((turn, index) => (
             <li key={index} className={turn.role === "user" ? "ml-auto max-w-[85%]" : `mr-auto flex flex-col gap-2 ${turn.scan ? "w-full" : "max-w-[90%]"}`}>
               {turn.role === "user" ? (
-                <p className="m-0 whitespace-pre-wrap break-words rounded-[18px] rounded-br-md bg-electric-blue-strong px-4 py-2 text-[15px] text-white">
+                <p className="m-0 whitespace-pre-wrap break-words rounded-panel rounded-br-md bg-electric-blue-strong px-4 py-2 text-[15px] text-white">
                   <span className="sr-only">You: </span>
                   {turn.text}
                 </p>
               ) : (
                 <>
                   {turn.text ? (
-                    <p className="m-0 w-fit whitespace-pre-wrap break-words rounded-[18px] rounded-tl-md border border-zk-border bg-zk-surface px-4 py-2 text-[15px] text-zk-text2">
+                    <p className="m-0 w-fit whitespace-pre-wrap break-words rounded-panel rounded-tl-md border border-zk-border bg-zk-surface px-4 py-2 text-[15px] text-zk-text2">
                       <span className="sr-only">Reply: </span>
                       {turn.text}
                     </p>
@@ -324,12 +327,12 @@ export function SecurityChat({
           {thread.map((message) => (
             <li key={message.id} className={message.role === "user" ? "ml-auto max-w-[85%]" : "mr-auto max-w-[90%]"}>
               {message.role === "user" ? (
-                <p className="m-0 whitespace-pre-wrap break-words rounded-[18px] rounded-br-md bg-electric-blue-strong px-4 py-2 text-[15px] text-white">
+                <p className="m-0 whitespace-pre-wrap break-words rounded-panel rounded-br-md bg-electric-blue-strong px-4 py-2 text-[15px] text-white">
                   <span className="sr-only">You: </span>
                   {message.text}
                 </p>
               ) : (
-                <p className="m-0 w-fit whitespace-pre-wrap break-words rounded-[18px] rounded-tl-md border border-zk-border bg-zk-surface px-4 py-2 text-[15px] text-zk-text2">
+                <p className="m-0 w-fit whitespace-pre-wrap break-words rounded-panel rounded-tl-md border border-zk-border bg-zk-surface px-4 py-2 text-[15px] text-zk-text2">
                   <span className="sr-only">Reply: </span>
                   {message.text}
                 </p>
@@ -345,7 +348,7 @@ export function SecurityChat({
             // The same "Claude is working" lines as the Ideas chat, for this job.
             <li className="mr-auto w-full max-w-[90%]">
               {scanning && lastTarget?.ok ? (
-                <ScanProgress site={lastTarget.target.value} />
+                <ScanProgress site={lastTarget.target.value} kind={lastTarget.target.kind} />
               ) : (
                 <ClaudeWorking steps={WORKING_STEPS} statusText="Ziki is reading your message." />
               )}
@@ -361,7 +364,7 @@ export function SecurityChat({
         }}
         noValidate
       >
-        <div className="relative rounded-[22px] border border-zk-border bg-zk-surface px-4 pb-2.5 pt-3 shadow-[0_2px_10px_rgba(0,0,0,0.06)] focus-within:border-electric-blue-strong/50">
+        <div className="relative rounded-panel border border-zk-border bg-zk-surface px-4 pb-2.5 pt-3 shadow-[0_2px_10px_rgba(0,0,0,0.06)] focus-within:border-electric-blue-strong/50">
           {/* Close, like the X on Ziki's dialogs (add-confirmation-dialog.tsx). */}
           {onClose ? (
             <button

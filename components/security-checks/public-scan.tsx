@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { SCAN_STEP_MS } from "./scan-progress";
+import { REPO_STEPS, SCAN_STEP_MS, SITE_STEPS } from "./scan-progress";
 import { runPublicScan } from "@/app/actions/security-preview";
 import { parseSecurityTarget, targetAddress } from "@/lib/security-checks/target";
 import type { PreviewSummary } from "@/lib/security-checks/preview-summary";
 import { PreviewResult } from "./preview-result";
 
-const SITE_STEPS = ["HTTPS", "Certificate", "Headers", "Cookies", "Email"];
-const REPO_STEPS = ["Secrets in files", "Security policy", "Dependency updates"];
 /** How long each area shows on the Scanning bar, the same as on Security. The result waits for the bar to finish. */
 const STEP_MS = SCAN_STEP_MS;
 
@@ -122,9 +120,9 @@ export function PublicScan({ signedIn }: { signedIn: boolean }) {
           Want a deeper check? Ziki&apos;s agents test much more and show you how to fix it.
         </p>
         {signedIn ? (
-          // Signed in: Try now opens the Security page with the site ready to add (asking which workspace if they
-          // have more than one), not the scan's page straight away.
-          <Link href={addAssetPath(site)} className="inline-flex h-10 shrink-0 items-center rounded-full bg-electric-blue-strong px-6 text-sm font-bold text-white hover:brightness-105">
+          // Signed in: Try now adds the site and opens its progress page, where the agents are already at work
+          // (asking which workspace first if they have more than one), the same as after signing up.
+          <Link href={tryNowPath(site)} className="inline-flex h-10 shrink-0 items-center rounded-full bg-electric-blue-strong px-6 text-sm font-bold text-white hover:brightness-105">
             Try now
           </Link>
         ) : (
@@ -138,7 +136,7 @@ export function PublicScan({ signedIn }: { signedIn: boolean }) {
 
   return (
     <div className="w-full max-w-[620px]">
-      <form onSubmit={scan} noValidate className="flex items-center gap-2 rounded-[18px] bg-white p-2 shadow-[0_12px_40px_rgba(0,20,50,0.28)]">
+      <form onSubmit={scan} noValidate className="flex items-center gap-2 rounded-panel bg-white p-2 shadow-[0_12px_40px_rgba(0,20,50,0.28)]">
         <label htmlFor="security-check-url" className="sr-only">Your URL</label>
         <input
           id="security-check-url"
@@ -151,7 +149,7 @@ export function PublicScan({ signedIn }: { signedIn: boolean }) {
           aria-describedby={error ? "security-check-error" : undefined}
           className="h-12 min-w-0 flex-1 border-0 bg-transparent px-3 text-[17px] text-[#0b1733] outline-none placeholder:text-[#8a94a6]"
         />
-        <button type="submit" disabled={pending} className="h-12 shrink-0 rounded-[12px] bg-[#2e6fef] px-7 text-[16px] font-bold text-white disabled:opacity-70">
+        <button type="submit" disabled={pending} className="h-12 shrink-0 rounded-panel bg-[#2e6fef] px-7 text-[16px] font-bold text-white disabled:opacity-70">
           {pending ? "Scanning…" : "Scan"}
         </button>
       </form>

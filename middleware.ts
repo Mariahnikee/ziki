@@ -6,7 +6,7 @@ import { BASE_PATH, toAppPath } from "@/lib/base-path";
 import { isProjectIssuePath, isReservedProjectSlug, projectOverviewSegments } from "@/lib/project-slug";
 import { isProjectFirstPath } from "@/lib/project-paths";
 import { isPublicAgentPath } from "@/lib/public-agent-paths";
-import { publicIntakeSegments, publicIssuesSegments } from "@/lib/public-project-paths";
+import { publicIntakeSegments, publicIssuesSegments, publicOrgFeedbackSegments } from "@/lib/public-project-paths";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
@@ -36,10 +36,17 @@ export function isPublicPath(
     pathWithoutBase === "/" ||
     pathWithoutBase === "" ||
     pathWithoutBase === "/llms.txt" ||
+    pathWithoutBase === "/llms-full.txt" ||
+    pathWithoutBase.startsWith("/llms/") ||
     // The public marketing pages beside the homepage.
     pathWithoutBase === "/how-it-works" ||
     pathWithoutBase === "/for-agents" ||
     pathWithoutBase === "/developers" ||
+    // Earn with your agent (#earn-page): for people who bring an agent.
+    pathWithoutBase === "/earn" ||
+    // The docs: anyone can read how Ziki works before signing up.
+    pathWithoutBase === "/docs" ||
+    pathWithoutBase.startsWith("/docs/") ||
     // The plans page (#ziki-coins): anyone can see what Ziki costs before signing up.
     pathWithoutBase === "/pricing" ||
     // Ziki Security's public page (#security-checks, C2): /security signed out (only the exact
@@ -51,6 +58,9 @@ export function isPublicPath(
     pathWithoutBase.startsWith("/skills/") ||
     // The public comparison directory and every comparison page (#compare).
     pathWithoutBase === "/compare" ||
+    // Articles (#resources).
+    pathWithoutBase === "/resources" ||
+    pathWithoutBase.startsWith("/resources/") ||
     pathWithoutBase.startsWith("/compare/") ||
     // Old business links from earners' emails (#earn-outreach): opened by people who aren't signed in.
     /^\/r\/[a-z0-9]{4,16}$/.test(pathWithoutBase) ||
@@ -71,6 +81,7 @@ export function isPublicPath(
     // below the existing public project overview.
     publicIntakeSegments(pathWithoutBase) !== null ||
     publicIssuesSegments(pathWithoutBase) !== null ||
+    publicOrgFeedbackSegments(pathWithoutBase) !== null ||
     pathWithoutBase.startsWith("/api/public/") ||
     pathWithoutBase.startsWith("/api/auth") ||
     pathWithoutBase.startsWith("/api/health") ||

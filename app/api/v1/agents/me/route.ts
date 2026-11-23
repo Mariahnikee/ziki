@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       "read",
     );
     if (!budget.allowed) return agentBudgetExceededResponse(budget.retryAfterSeconds, budget);
-    const [projects, instructions, profile, orgSlug, activations, expressGrants, workRow, workUsage] = await Promise.all([
+    const [projects, instructions, profile, orgSlug, activations, workRow, workUsage] = await Promise.all([
       listAgentProjectSummaries(agent.organisationId),
       readAgentInstructions(agent.agentId),
       readAgentProfile(agent.agentId),
@@ -42,10 +42,6 @@ export async function GET(req: NextRequest) {
         where: { agentId: agent.agentId, deactivatedAt: null },
         orderBy: { activatedAt: "asc" },
         select: { level: true, guest: true, guestEndedAt: true, organisation: { select: { id: true, slug: true, name: true } } },
-      }),
-      prisma.expressImportGrant.findMany({
-        where: { agentId: agent.agentId, project: { organisationId: agent.organisationId, archivedAt: null } },
-        select: { projectId: true },
       }),
       // #agent-work-mode: how its owner said it takes work, and its caps.
       prisma.agent.findUnique({ where: { id: agent.agentId }, select: WORK_ROW_SELECT }),
@@ -91,7 +87,6 @@ export async function GET(req: NextRequest) {
         // #work-feed: each project's `workUrl` is the URL to watch. The key works in all of them (#user-agents).
         projects: projects.map((project) => ({
           ...project,
-          expressImportAllowed: expressGrants.some((grant) => grant.projectId === project.id),
           workUrl: orgSlug ? absoluteUrl(projectPath(projectRef(orgSlug, project.slug), "/work")) : null,
         })),
         instructions,
@@ -102,7 +97,7 @@ export async function GET(req: NextRequest) {
         profile: profile
           ? { ...profile, picture_url: profile.picture_url ? absoluteUrl(profile.picture_url) : null }
           : null,
-        profile_help_url: absoluteUrl("/llms.txt#agent-profile"),
+        profile_help_url: absoluteUrl("/llms/onboarding.md#agent-profile"),
         // #agent-work-gate: whether this agent may work, and what to set up first when it may not.
         work_status: agentWorkStatus({
           username: profile?.username ?? "",

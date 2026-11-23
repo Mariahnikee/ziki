@@ -7,14 +7,17 @@ import { agentProfileUpdateSchema, agentSkillsReplaceSchema } from "@/lib/valida
 import { agentCommentSchema } from "@/lib/agent-api/issues";
 import { bidSchema } from "@/lib/agent-api/bid";
 import { deliveryBodySchema } from "@/lib/agent-api/delivery";
+import { deploymentSchema } from "@/lib/agent-api/deployment";
 import { testVerdictBodySchema } from "@/lib/agent-api/test-verdict";
 import { addRowsSchema } from "@/lib/proof";
 import { isScanned, preflight, scanFile } from "@/lib/security/preflight-scan";
 import { parseRedesignListQuery } from "@/lib/redesign-read";
+import { REDESIGN_ISSUE_REQUIRED, redesignSchema } from "@/lib/redesigns";
 import { encodeCursor } from "@/lib/agent-api/create-policy";
 import { parseWorkSettings } from "@/lib/agents/work-mode";
 import { sitePageUrl } from "@/lib/marketing/site-reader";
 import { parseEstimate, rewardView } from "@/lib/agent-api/reward-estimates";
+import { leadSchema } from "@/lib/validations/lead";
 
 /** Invalid payloads and unsafe input are rejected before they reach the database or the page. */
 const valid = { title: "Login button broken", description: "Clicking sign in does nothing on mobile." };
@@ -28,6 +31,13 @@ describe("issue payloads", () => {
     expect(createBugSchema.safeParse({ ...valid, title: "ab" }).success).toBe(false);
     expect(createBugSchema.safeParse({ ...valid, title: "a".repeat(201) }).success).toBe(false);
     expect(createBugSchema.safeParse({ ...valid, description: "too short" }).success).toBe(false);
+  });
+
+  it("stores titles plain: leading tags such as [API] are dropped, and a title that is only tags is still too short", () => {
+    const parsed = createBugSchema.safeParse({ ...valid, title: "[API] [Bug] - Pull requests fail to load" });
+    expect(parsed.success && parsed.data.title).toBe("Pull requests fail to load");
+    expect(createBugSchema.safeParse({ ...valid, title: "Fix the [API] docs" }).data?.title).toBe("Fix the [API] docs");
+    expect(createBugSchema.safeParse({ ...valid, title: "[UI] ab" }).success).toBe(false);
   });
 
   it("rejects fields a client may not set: status at creation, a severity, an invalid status update", () => {
@@ -155,6 +165,19 @@ describe("redesign list filters (#9)", () => {
     const cursor = { createdAt: new Date("2026-11-01T10:00:00.000Z"), id: "rd-9" };
     expect(query(`status=superseded&mine=1&limit=500&cursor=${encodeCursor(cursor)}`)()).toEqual({ status: "superseded", mine: true, limit: 100, cursor });
     expect(query("mine=false")()).toEqual({ status: null, mine: false, limit: 25, cursor: null });
+  });
+});
+
+describe("redesign proposals (#9)", () => {
+  const proposal = { projectId: "project_web", bugId: "bug_1", title: "Calmer dashboard", body: "Muted tiles; only overdue turns red." };
+
+  it("refuses a proposal that names no issue, saying why", () => {
+    expect(redesignSchema.safeParse(proposal).success).toBe(true);
+    for (const bugId of [undefined, "", "   "]) {
+      const parsed = redesignSchema.safeParse({ ...proposal, bugId });
+      expect(parsed.success, String(bugId)).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.message)).toContain(REDESIGN_ISSUE_REQUIRED);
+    }
   });
 });
 
@@ -311,5 +334,26 @@ describe("the Marketing assistant's website reader (#marketing-assistant)", () =
     ]) {
       expect(sitePageUrl(site, path)).toBeNull();
     }
+  });
+});
+
+describe("deployment report live link (#live-link)", () => {
+  it("takes an http(s) live link, keeps it optional, and refuses anything else", () => {
+    const base = { environment: "prod", note: "Saw the merge commit on /api/health." };
+    expect(deploymentSchema.safeParse(base).success).toBe(true);
+    expect(deploymentSchema.safeParse({ ...base, url: "https://app.example.com/disputes" }).data?.url).toBe("https://app.example.com/disputes");
+    for (const url of ["javascript:alert(1)", "app.example.com", "https://has space.com", "ftp://example.com"]) {
+      expect(deploymentSchema.safeParse({ ...base, url }).success).toBe(false);
+    }
+  });
+});
+
+describe("public lead forms (#how-it-works-leads)", () => {
+  it("keeps a valid email (lower-cased), and refuses a bad email, an unknown form or an oversized note", () => {
+    const parsed = leadSchema.parse({ email: "  Ada@Example.COM ", source: "how-it-works:hero" });
+    expect(parsed.email).toBe("ada@example.com");
+    expect(leadSchema.safeParse({ email: "not-an-email", source: "how-it-works:hero" }).success).toBe(false);
+    expect(leadSchema.safeParse({ email: "ada@example.com", source: "elsewhere" }).success).toBe(false);
+    expect(leadSchema.safeParse({ email: "ada@example.com", source: "how-it-works:middle", goal: "x".repeat(1001) }).success).toBe(false);
   });
 });

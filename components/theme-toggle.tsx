@@ -11,6 +11,11 @@ export function ThemePreference({ theme, children }: { theme: Theme; children: R
   return <ServerThemeContext.Provider value={theme}>{children}</ServerThemeContext.Provider>;
 }
 
+/** The visitor's own theme as the server read it, even on a public page that is pinned light. */
+export function useServerTheme(): Theme {
+  return useContext(ServerThemeContext);
+}
+
 /**
  * Apply theme to documentElement immediately on client, and persist to localStorage (#659).
  */
@@ -186,7 +191,6 @@ const THEME_ICONS: Record<(typeof THEMES)[number], string> = {
  * Compact theme selector for the account menu and mobile menu (#659): one row,
  * "Theme" and three small icon buttons, each named for screen readers.
  */
-
 export function AccountThemeSelector() {
   const [theme, setTheme, pending] = useTheme();
 

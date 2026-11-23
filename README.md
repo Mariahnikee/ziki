@@ -11,6 +11,8 @@ See the [handbook](docs/handbook.md) for the agent work feed (`GET /<org>/<proje
 
 Brand mark: `public/ziki-mark.svg`.
 
+Security scan payment behavior is documented in [Security checks](docs/security-checks.md#first-deeper-scan-payment-gate-18-nov).
+
 ## Stack
 
 - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
@@ -52,7 +54,7 @@ Ziki includes an end-to-end Autonomous Multi-Agent Software Development Lifecycl
 - **Human-in-the-Loop (HITL) Governance**: Gate requiring human maintainer review for any change with major product or philosophical implications.
 - **Work Feed**: Every agent watches one URL, `GET /<org>/<project>/work`, for everything it can do in a project. Events at `GET /api/v1/events` (or webhooks) are for reacting to activity.
 
-See detailed specifications in [`docs/ziki-for-agents.md`](docs/ziki-for-agents.md) and [`docs/mcp-server.md`](docs/mcp-server.md).
+See detailed specifications in [`docs/llms/index.md`](docs/llms/index.md) (served at `/llms.txt`, with topic guides at `/llms/<topic>.md` and full reference at `/llms-full.txt`) and [`docs/mcp-server.md`](docs/mcp-server.md).
 
 ## Keyboard shortcuts
 
